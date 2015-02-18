@@ -14,6 +14,8 @@ from cryptography.fernet import Fernet, InvalidToken
 class Connection():
 
     def __init__(self, working_dir, encrypted_dir, passphrase):
+        self._cryptographic_backend = default_backend()
+
         self._working_dir = working_dir
         self._encrypted_dir = encrypted_dir
         self._config_path = os.path.join(self._encrypted_dir,".psfel_cfg.json")
@@ -22,12 +24,12 @@ class Connection():
         self._verify_encrypted_dir()
         self._verify_working_dir()
 
-    def _derive_key(self, salt = None):
+    def _derive_key(self):
         kdf = PBKDF2HMAC(
                 algorithm = hashes.SHA256(),
                 length = 32,
-                salt = salt,
-                iterations = 100000,
+                salt = self._configuration.get("salt"),
+                iterations = self._configuration.get("iterations"),
                 backend = self._cryptographic_backend
             )
         key = kdf.derive(self._passphrase.encode('utf-8'))
@@ -41,11 +43,16 @@ class Connection():
         if os.path.exists(self._config_path):
             with open(self._config_path, "r") as config_file:
                 self._configuration = json.loads(config_file.readlines())
-                #TODO: verify configuraiton
+
             self._derive_key()
 
         else:
-            #generate config file
+            default_config = {
+                "salt": base64.urlsafe_b64encode(os.urandom(16)),
+                "iterations": 10000
+            }
+            with open(self._config_path, "w") as config_file:
+                config_file.write(json.dumps(default_config))
 
         if not os.path.exists(
                 os.path.join(self._encrypted_dir,".psfel_manifest.db")
