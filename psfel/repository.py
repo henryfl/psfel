@@ -5,6 +5,7 @@ import itertools
 import json
 import sqlite3
 import shutil
+import zlib
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -34,7 +35,20 @@ class Connection():
             )
         key = kdf.derive(self._passphrase.encode('utf-8'))
         self._key = base64.b64encode(key)
-        
+
+    def _encrypt_file(self, path):
+        with open(path,"rb") as input_file:
+            compressed_data = zlib.compress(input_file.read())
+
+        f = Fernet(self._key)
+        return f.encrypt(compressed_data)
+    
+    def _decrypt_file(self, path):
+        f = Fernet(self._key)
+        with open(path,"rb") as input_file:
+            decrypted_data = f.decrypt(input_file.read())
+
+        return zlib.decompress(decrypted_data)
 
     def _verify_encrypted_dir(self):
         if not os.path.isdir(self._encrypted_dir):
@@ -42,7 +56,7 @@ class Connection():
 
         if os.path.exists(self._config_path):
             with open(self._config_path, "r") as config_file:
-                self._configuration = json.loads(config_file.readlines())
+                self._configuration = json.loads(config_file.read())
 
             self._derive_key()
 
