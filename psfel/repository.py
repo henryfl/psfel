@@ -40,15 +40,21 @@ class Connection():
         with open(path,"rb") as input_file:
             compressed_data = zlib.compress(input_file.read())
 
-        f = Fernet(self._key)
-        return f.encrypt(compressed_data)
+        return self._encrypt_data(compressed_data)
     
     def _decrypt_file(self, path):
-        f = Fernet(self._key)
         with open(path,"rb") as input_file:
-            decrypted_data = f.decrypt(input_file.read())
+            decrypted_data = self._decrypt_data(input_file.read())
 
         return zlib.decompress(decrypted_data)
+
+    def _encrypt_data(self, data):
+        f = Fernet(self._key)
+        return f.encrypt(data)
+
+    def _decrypt_data(self, data):
+        f = Fernet(self._key)
+        return f.decrypt(data)
 
     def _verify_encrypted_dir(self):
         if not os.path.isdir(self._encrypted_dir):
@@ -68,10 +74,43 @@ class Connection():
             with open(self._config_path, "w") as config_file:
                 config_file.write(json.dumps(default_config))
 
-        if not os.path.exists(
-                os.path.join(self._encrypted_dir,".psfel_manifest.db")
-        ):
-           self._generate_manifest()
+            self._configuration = default_config
+
+        
+        self._generate_manifest()
 
     def _generate_manifest(self):
-        # Decrypt manifest, load data, change what has changed
+        manifest_connection = sqlite3.connect(
+                os.path.join(self._encrypted_dir,".psfel_manifest.db")
+            )
+        manifest_connection.row_factory = sqlite3.Row
+        manifest_cursor = manifest_connection.cursor()
+
+        try:
+            manifest_cursor.execute("SELECT * FROM files")
+        except Exception:
+            manifest_cursor.execute(
+                    "CREATE TABLE files (name BLOB, hash TEXT)"
+                )
+            manifest_connection.commit()
+            manifest_cursor.execute("SELECT * FROM files")
+
+        # Prunes manifest file to remove any entries that may have survived
+        # the deletion of their respective files.
+        for file_entry in manifest_cursor.fetchall():
+            relative_path = (file_entry.hash[0]+"/"+
+                            file_entry.hash[1]+"/"+file_entry.hash+".gz")
+            if not os.path.exists(
+                    os.path.join(self._encrypted_dir,relative_path)
+            ):
+                manifest_cursor.execute(
+                        "DELETE FROM files WHERE hash = '{}'".format(
+                                file_entry.hash)
+                    )
+        manifest_connection.commit()
+        manifest_connection.close()
+
+    def push_working(self):
+
+    def pull_encrypted(self):
+        
