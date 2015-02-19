@@ -29,7 +29,7 @@ class Connection():
         kdf = PBKDF2HMAC(
                 algorithm = hashes.SHA256(),
                 length = 32,
-                salt = self._configuration.get("salt"),
+                salt = self._configuration.get("salt").encode('utf-8'),
                 iterations = self._configuration.get("iterations"),
                 backend = self._cryptographic_backend
             )
@@ -63,12 +63,10 @@ class Connection():
         if os.path.exists(self._config_path):
             with open(self._config_path, "r") as config_file:
                 self._configuration = json.loads(config_file.read())
-
-            self._derive_key()
-
         else:
             default_config = {
-                "salt": base64.urlsafe_b64encode(os.urandom(16)),
+                "salt": base64.urlsafe_b64encode(
+                        os.urandom(16)).decode('utf-8'),
                 "iterations": 10000
             }
             with open(self._config_path, "w") as config_file:
@@ -76,8 +74,13 @@ class Connection():
 
             self._configuration = default_config
 
+        self._derive_key()
         
         self._generate_manifest()
+
+    def _verify_working_dir(self):
+        if not os.path.isdir(self._working_dir):
+            os.makedirs(self._working_dir)
 
     def _generate_manifest(self):
         manifest_connection = sqlite3.connect(
@@ -98,19 +101,76 @@ class Connection():
         # Prunes manifest file to remove any entries that may have survived
         # the deletion of their respective files.
         for file_entry in manifest_cursor.fetchall():
-            relative_path = (file_entry.hash[0]+"/"+
-                            file_entry.hash[1]+"/"+file_entry.hash+".gz")
+            relative_path = (file_entry["hash"][0]+"/"+
+                            file_entry["hash"][1]+"/"+file_entry["hash"]+".gz")
             if not os.path.exists(
                     os.path.join(self._encrypted_dir,relative_path)
             ):
                 manifest_cursor.execute(
                         "DELETE FROM files WHERE hash = '{}'".format(
-                                file_entry.hash)
+                                file_entry["hash"])
                     )
         manifest_connection.commit()
+
+        for root, dirnames, filenames in os.walk(self._encrypted_dir):
+            for file_name in filenames:
+                if ".gz" in file_name:
+                    manifest_cursor.execute(
+                            "SELECT * FROM files WHERE hash = '{}'".format(
+                                    file_name.replace(".gz","")
+                                )
+                        )
+                    if len(manifest_cursor.fetchall()) == 0:
+                        os.remove(os.path.join(root,file_name))
+
         manifest_connection.close()
 
     def push_working(self):
+        self._generate_manifest()
+
+        manifest_connection = sqlite3.connect(
+                os.path.join(self._encrypted_dir,".psfel_manifest.db")
+            )
+        manifest_connection.row_factory = sqlite3.Row
+        manifest_cursor = manifest_connection.cursor()
+        manifest_cursor.execute("SELECT * FROM files")
+        path_cache = {}
+        for file_entry in manifest_cursor.fetchall():
+            path_cache[self._decrypt_data(file_entry["name"]).decode('utf-8')] = file_entry["hash"]
+
+        manifest_cursor.execute("DELETE FROM files")
+        manifest_connection.commit()
+
+        for root, dirnames, filenames in os.walk(self._working_dir):
+            for file_name in filenames:
+                r_path = os.path.join(root,
+                        file_name)[len(self._working_dir)+1:]
+                if r_path in path_cache:
+                    uid = path_cache[r_path]
+                else:
+                    uid = uuid.uuid4().hex
+                
+                manifest_cursor.execute(
+                        "INSERT INTO files (name, hash) VALUES (?,?)",
+                        [self._encrypt_data(r_path.encode('utf-8')),uid])
+
+                encrypted_data = self._encrypt_file(
+                        os.path.join(root, file_name))
+
+                derived_directory = os.path.join(
+                        self._encrypted_dir,(uid[0]+"/"+uid[1]))
+                if not os.path.isdir(derived_directory):
+                    os.makedirs(derived_directory)
+                file_name = uid+".gz"
+
+
+                with open(os.path.join(
+                        derived_directory,file_name),"wb") as out_f:
+                    out_f.write(encrypted_data)
+
+        manifest_connection.commit()
+        manifest_connection.close()
+        self._generate_manifest()
 
     def pull_encrypted(self):
-        
+        pass

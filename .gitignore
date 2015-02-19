@@ -1,0 +1,10 @@
+
+*.pyc
+
+psfel/e/.psfel_cfg.json
+
+psfel/e/.psfel_manifest.db
+
+psfel/e/0/a/0a8a2b75e8144c578bcd0675bdfbcbcd.gz
+
+psfel/w/ho.txt
