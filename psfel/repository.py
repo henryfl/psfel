@@ -125,6 +125,19 @@ class Connection():
 
         manifest_connection.close()
 
+    def dump_manifest(self):
+        manifest_connection = sqlite3.connect(
+                os.path.join(self._encrypted_dir,".psfel_manifest.db")
+            )
+        manifest_connection.row_factory = sqlite3.Row
+        manifest_cursor = manifest_connection.cursor()
+        manifest_cursor.execute("SELECT * FROM files")
+        path_cache = {}
+        for file_entry in manifest_cursor.fetchall():
+            path_cache[self._decrypt_data(file_entry["name"]).decode('utf-8')] = file_entry["hash"]
+
+        print(path_cache)
+
     def push_working(self):
         self._generate_manifest()
 
@@ -173,4 +186,26 @@ class Connection():
         self._generate_manifest()
 
     def pull_encrypted(self):
-        pass
+        shutil.rmtree(self._working_dir)
+        self._verify_working_dir()
+        self._generate_manifest()
+
+        manifest_connection = sqlite3.connect(
+                os.path.join(self._encrypted_dir,".psfel_manifest.db")
+            )
+        manifest_connection.row_factory = sqlite3.Row
+        manifest_cursor = manifest_connection.cursor()
+        manifest_cursor.execute("SELECT * FROM files")
+
+        for file_entry in manifest_cursor.fetchall():
+            encrypted_dir_path = (file_entry["hash"][0]+"/"+
+                            file_entry["hash"][1]+"/"+file_entry["hash"]+".gz")
+            working_dir_path = self._decrypt_data(
+                    file_entry["name"]).decode('utf-8')
+            file_data = self._decrypt_file(os.path.join(
+                    self._encrypted_dir,encrypted_dir_path))
+            with open(os.path.join(
+                    self._working_dir,working_dir_path),"wb") as out_f:
+                out_f.write(file_data)
+
+        manifest_connection.close()
