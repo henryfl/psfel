@@ -134,7 +134,8 @@ class Connection():
         manifest_cursor.execute("SELECT * FROM files")
         path_cache = {}
         for file_entry in manifest_cursor.fetchall():
-            path_cache[self._decrypt_data(file_entry["name"]).decode('utf-8')] = file_entry["hash"]
+            path_cache[self._decrypt_data(
+                    file_entry["name"]).decode('utf-8')] = file_entry["hash"]
 
         print(path_cache)
 
@@ -149,7 +150,8 @@ class Connection():
         manifest_cursor.execute("SELECT * FROM files")
         path_cache = {}
         for file_entry in manifest_cursor.fetchall():
-            path_cache[self._decrypt_data(file_entry["name"]).decode('utf-8')] = file_entry["hash"]
+            path_cache[self._decrypt_data(
+                    file_entry["name"]).decode('utf-8')] = file_entry["hash"]
 
         manifest_cursor.execute("DELETE FROM files")
         manifest_connection.commit()
